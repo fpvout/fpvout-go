@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"io"
 	"log"
 	"net"
 	"time"
+	"os"
 
+	astits "github.com/asticode/go-astits"
 	"github.com/google/gousb"
 )
 
@@ -20,7 +21,9 @@ func main() {
 	log.Println("go-fpv starting")
 
 	// Setup multicast
-	addr, err := net.ResolveUDPAddr("udp", "224.1.1.1:8080")
+	//addr, err := net.ResolveUDPAddr("udp", "224.1.1.1:8080")
+	addr, err := net.ResolveUDPAddr("udp", "192.168.150.46:8080")
+
 	if err != nil {
 		log.Fatalf("resolveudpaddr: %v", err)
 	}
@@ -28,6 +31,27 @@ func main() {
 	if err != nil {
 		log.Fatalf("dialudp: %v", err)
 	}
+	// Setup MPEG TS container
+	mx := astits.NewMuxer(context.Background(), c)
+	f, _ := os.Open("/home/atomicpi/output.ts")
+	if err != nil {
+		log.Fatalf("open: %v", err)
+	}
+	mx = astits.NewMuxer(context.Background(), f)
+
+	// Add an elementary stream
+	mx.AddElementaryStream(astits.PMTElementaryStream{
+		ElementaryPID: 1,
+		StreamType:    astits.StreamTypeMetadata,
+	})
+	mx.AddElementaryStream(astits.PMTElementaryStream{
+		ElementaryPID: 0x100,
+		StreamType: astits.StreamTypeH264Video,
+	})
+
+	// Write MPEG tables
+	mx.WriteTables()
+
 	// Setup USB
 	ctx := gousb.NewContext()
 	defer ctx.Close()
@@ -71,12 +95,23 @@ func main() {
 		log.Fatalf("NewStream: %v", err)
 	}
 
+	// Start copying
 	b := make([]byte, 512)
 
 	for {
-		_, err = rs.Read(b)
-		if err != io.EOF {
-			c.Write(b)
+		l, err := rs.Read(b)
+		if err == nil {
+			//c.Write(b)
+			// Write data
+			mx.WriteData(&astits.MuxerData{
+				PES: &astits.PESData{
+					Data: b,
+				},
+				PID: 0x100,
+			})
+			log.Printf("Wrote %d bytes", l)
+		} else {
+			log.Fatalf("%v", err)
 		}
 	}
 
