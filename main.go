@@ -1,23 +1,33 @@
 package main
 
 import (
+	"context"
 	"io"
 	"log"
-	"context"
+	"net"
 	"time"
-	"net/http"
 
 	"github.com/google/gousb"
 )
 
-var fromGoggles gousb.InEndpoint
-var toGoggles gousb.OutEndpoint
+const srvAddr = "224.0.0.1:9999"
+const maxDatagramSize = 1400
 
 var MAGIC = []byte{0x52, 0x4d, 0x56, 0x54}
 
 func main() {
 
 	log.Println("go-fpv starting")
+
+	// Setup multicast
+	addr, err := net.ResolveUDPAddr("udp", "224.1.1.1:8080")
+	if err != nil {
+		log.Fatalf("resolveudpaddr: %v", err)
+	}
+	c, err := net.DialUDP("udp", nil, addr)
+	if err != nil {
+		log.Fatalf("dialudp: %v", err)
+	}
 	// Setup USB
 	ctx := gousb.NewContext()
 	defer ctx.Close()
@@ -39,6 +49,7 @@ func main() {
 		log.Fatalf("%s.Interface(3, 0): %v", cfg, err)
 	}
 	defer intf.Close()
+
 	// Open endpoints
 	fromGoggles, err := intf.InEndpoint(0x84)
 	if err != nil {
@@ -60,8 +71,17 @@ func main() {
 		log.Fatalf("NewStream: %v", err)
 	}
 
-	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		b := make([]byte, 1024 * 512)
+	b := make([]byte, 512)
+
+	for {
+		_, err = rs.Read(b)
+		if err != io.EOF {
+			c.Write(b)
+		}
+	}
+
+	/*http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		b := make([]byte, 512)
 		w.WriteHeader(200)
 		log.Println("beginning write loop")
 		for {
@@ -72,5 +92,5 @@ func main() {
 		}
 	})
 	log.Println("starting on 1234")
-	log.Fatal(http.ListenAndServe(":1234", nil))
+	log.Fatal(http.ListenAndServe(":1234", nil))*/
 }
