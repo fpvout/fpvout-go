@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -20,42 +19,72 @@ import (
 
 var MAGIC = []byte{0x52, 0x4d, 0x56, 0x54}
 
-var httpPort int
+type flagDef struct {
+	http struct {
+		port int
+	}
+	rtp struct {
+		ip string
+		port int
+		mtu int
+		packetType int
+		clockRate uint
+		frameRate uint
+	}
+	usb struct {
+		vid int
+		pid int
+		bufferSize int
+	}
+}
 
-var ip string
-var port int
-var bufferSize int
-var mtu int
-var packetType int
-var clockRate uint
-var frameRate uint
+var flags flagDef
 
-var usbVid int
-var usbPid int
 
 func init() {
 	// HTTP (for SDP)
-	flag.IntVar(&httpPort, "http_port", 8080, "port on which to serve SDP")
+	flag.IntVar(&flags.http.port, "http_port", 8080, "port on which to serve SDP files")
 
 	// RTP
-	flag.IntVar(&port, "port", 16384, "destination port for the RTP stream")
-	flag.StringVar(&ip, "ip", "224.0.190.128", "destination ip address for the RTP stream (can be multicast)")
-	flag.IntVar(&bufferSize, "buffer", 2048, "size of USB read buffer")
-	flag.IntVar(&mtu, "mtu", 1400, "max packet size over the transport")
-	flag.IntVar(&packetType, "type", 96, "RTP packet type field (must be <= 127)")
-	flag.UintVar(&clockRate, "clock", 90000, "RTP clock rate")
+	flag.UintVar(&flags.rtp.clockRate, "rtp_clockrate", 90000, "RTP clock rate")
+	flag.UintVar(&flags.rtp.frameRate, "rtp_framerate", 60, "RTP's assumption of goggle exported framerate")
+	flag.IntVar(&flags.rtp.mtu, "rtp_mtu", 1400, "max packet size over the transport")
+	flag.StringVar(&flags.rtp.ip, "rtp_ip", "224.0.190.128", "destination ip for the RTP stream (can be multicast)")
+	flag.IntVar(&flags.rtp.port, "rtp_port", 16384, "destination port for the RTP stream")
+	flag.IntVar(&flags.rtp.packetType, "rtp_type", 96, "RTP packet type field (must be <= 127)")
 
 	// USB
-	flag.IntVar(&usbVid, "usb_vid", 0x2ca3, "USB Vendor ID")
-	flag.IntVar(&usbPid, "usb_pid", 0x1f, "USB Product ID")
-	flag.UintVar(&frameRate, "usb_framerate", 60, "Goggle exported framerate")
+	flag.IntVar(&flags.usb.bufferSize, "usb_buffer", 2048, "size of USB read buffer")
+	flag.IntVar(&flags.usb.pid, "usb_pid", 0x1f, "USB Product ID")
+	flag.IntVar(&flags.usb.vid, "usb_vid", 0x2ca3, "USB Vendor ID")
 
 	flag.Parse()
 }
 
 func main() {
+	// Build our three important channels
+	c := setupUDP()
+	rs := setupUSB()
+	p := setupRTP()
+
+	// Spin off passing data around into a goroutine
+	go reader(rs, p, c)
+
+	fmt.Println("The following streams are available:")
+	printAllAddresses()
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", flags.http.port), nil))
+
+}
+
+func setupRTP() rtp.Packetizer {
+	return rtp.NewPacketizer(flags.rtp.mtu, uint8(flags.rtp.packetType), 0xDFDF1000 /* arbitrary source ID */,
+		&codecs.H264Payloader{}, rtp.NewRandomSequencer(), uint32(flags.rtp.clockRate))
+
+}
+
+func setupUDP() io.Writer {
 	// Initialize UDP output
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", ip, port))
+	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", flags.rtp.ip, flags.rtp.port))
 	if err != nil {
 		log.Fatalf("udp: %v", err)
 	}
@@ -63,22 +92,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("udp: %v", err)
 	}
+	return c
+}
 
-	// Create our packetizer
-	p := rtp.NewPacketizer(mtu, uint8(packetType), 0xDFDF1000 /* arbitrary source ID */, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), uint32(clockRate))
-
+func setupUSB() io.Reader {
 	// Setup USB
 	ctx := gousb.NewContext()
 	defer ctx.Close()
 
 	var dev *gousb.Device
-	err = errors.New("no error")
-	dev, err = ctx.OpenDeviceWithVIDPID(gousb.ID(usbVid), gousb.ID(usbPid))
+
+	dev, err := ctx.OpenDeviceWithVIDPID(gousb.ID(flags.usb.vid), gousb.ID(flags.usb.pid))
 	if err != nil {
 		log.Fatalf("Error opening device: %v", err)
 	}
 	for dev == nil {
-		dev, err = ctx.OpenDeviceWithVIDPID(gousb.ID(usbVid), gousb.ID(usbPid))
+		dev, err = ctx.OpenDeviceWithVIDPID(gousb.ID(flags.usb.vid), gousb.ID(flags.usb.pid))
 		if err != nil {
 			log.Fatalf("Error opening device: %v", err)
 		}
@@ -114,20 +143,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("NewStream: %v", err)
 	}
+	return rs
+}
 
-	go reader(rs, p, c)
+func setupHTTP() {
 	http.HandleFunc("/stream.sdp", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("v=0\n"))
-		w.Write([]byte(fmt.Sprintf("o=fpv 0 0 IN IP4 %s\n", ip)))
+		w.Write([]byte(fmt.Sprintf("o=fpv 0 0 IN IP4 %s\n", flags.rtp.ip)))
 		w.Write([]byte("s=FPV Feed\n"))
-		w.Write([]byte(fmt.Sprintf("c=IN IP4 %s\n", ip)))
+		w.Write([]byte(fmt.Sprintf("c=IN IP4 %s\n", flags.rtp.ip)))
 		w.Write([]byte("t=0 0\n"))
-		w.Write([]byte(fmt.Sprintf("m=video %d RTP/AVP 96\n", port)))
-		w.Write([]byte(fmt.Sprintf("a=rtpmap:96 H264/%d\n", clockRate)))
+		w.Write([]byte(fmt.Sprintf("m=video %d RTP/AVP 96\n", flags.rtp.port)))
+		w.Write([]byte(fmt.Sprintf("a=rtpmap:96 H264/%d\n", flags.rtp.clockRate)))
 	})
-	printAllAddresses()
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", httpPort), nil))
-
 }
 
 // Print to stdout all the ways one can retrieve the SDP file from our embedded webserver
@@ -150,7 +178,7 @@ func printAllAddresses() {
 				ip = v.IP
 			}
 			if !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
-				log.Printf("http://%s:%d/stream.sdp", ip.String(), httpPort)
+				log.Printf("http://%s:%d/stream.sdp", ip.String(), flags.http.port)
 			}
 		}
 	}
@@ -164,7 +192,7 @@ func reader(in io.Reader, p rtp.Packetizer, w io.Writer) {
 	packetsWritten := 0
 	lastPacketReport := 0
 
-	b := make([]byte, bufferSize)
+	b := make([]byte, flags.usb.bufferSize)
 	for {
 		n, err := in.Read(b)
 		if err == io.EOF {
@@ -183,7 +211,7 @@ func reader(in io.Reader, p rtp.Packetizer, w io.Writer) {
 				// Our best guess, given that we don't have a display timestamp from the export, is to estimate this
 				// using the clock rate and the framerate, both of which are per second, then only using that if
 				// the NALU contained a frame.
-				var sampleCount uint32 = uint32(clockRate/frameRate) * uint32(nal.FrameCount)
+				var sampleCount uint32 = uint32(flags.rtp.clockRate/flags.rtp.frameRate) * uint32(nal.FrameCount)
 				packets := p.Packetize(nal.Body, sampleCount)
 				for _, packet := range packets {
 					packetsWritten++
@@ -196,7 +224,7 @@ func reader(in io.Reader, p rtp.Packetizer, w io.Writer) {
 			}
 			if packetsWritten > lastPacketReport+1000 {
 				lastPacketReport = packetsWritten
-				log.Printf("wrote %d packets\nbuffer: %d bytes", packetsWritten, len(nal.Body))
+				log.Printf("wrote %d packets", packetsWritten)
 			}
 		}
 	}
