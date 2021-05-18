@@ -30,11 +30,13 @@ type flagDef struct {
 		packetType int
 		clockRate uint
 		frameRate uint
+		sampleMethodStatic bool
 	}
 	usb struct {
 		vid int
 		pid int
 		bufferSize int
+		bufferTxes int
 	}
 }
 
@@ -51,10 +53,12 @@ func init() {
 	flag.IntVar(&flags.rtp.mtu, "rtp_mtu", 1400, "max packet size over the transport")
 	flag.StringVar(&flags.rtp.ip, "rtp_ip", "224.0.190.128", "destination ip for the RTP stream (can be multicast)")
 	flag.IntVar(&flags.rtp.port, "rtp_port", 16384, "destination port for the RTP stream")
+	flag.BoolVar(&flags.rtp.sampleMethodStatic, "rtp_samples_static", false, "if true, RTP timestamp tracks a monotonic clock rather than frame count")
 	flag.IntVar(&flags.rtp.packetType, "rtp_type", 96, "RTP packet type field (must be <= 127)")
 
 	// USB
-	flag.IntVar(&flags.usb.bufferSize, "usb_buffer", 2048, "size of USB read buffer")
+	flag.IntVar(&flags.usb.bufferSize, "usb_buffer_size", 2048, "size of buffer we stage reads into")
+	flag.IntVar(&flags.usb.bufferTxes, "usb_buffer_txes", 20, "how many bulk reads we'll prefetch and keep in flight simultaneously")
 	flag.IntVar(&flags.usb.pid, "usb_pid", 0x1f, "USB Product ID")
 	flag.IntVar(&flags.usb.vid, "usb_vid", 0x2ca3, "USB Vendor ID")
 
@@ -62,10 +66,11 @@ func init() {
 }
 
 func main() {
-	// Build our three important channels
+	// Build our important channels
 	c := setupUDP()
 	rs := setupUSB()
 	p := setupRTP()
+	setupHTTP()
 
 	// Spin off passing data around into a goroutine
 	go reader(rs, p, c)
@@ -98,7 +103,7 @@ func setupUDP() io.Writer {
 func setupUSB() io.Reader {
 	// Setup USB
 	ctx := gousb.NewContext()
-	defer ctx.Close()
+	//defer ctx.Close()
 
 	var dev *gousb.Device
 
@@ -114,7 +119,9 @@ func setupUSB() io.Reader {
 		log.Printf("Waiting for device...")
 		time.Sleep(5 * time.Second)
 	}
-	defer dev.Close()
+	// Detach kernel drivers
+	dev.SetAutoDetach(true)
+	//defer dev.Close()
 	cfg, err := dev.Config(1)
 	if err != nil {
 		log.Fatalf("Config(1): %v", err)
@@ -123,7 +130,7 @@ func setupUSB() io.Reader {
 	if err != nil {
 		log.Fatalf("%s.Interface(3, 0): %v", cfg, err)
 	}
-	defer intf.Close()
+	//defer intf.Close()
 
 	// Open endpoints
 	fromGoggles, err := intf.InEndpoint(0x84)
@@ -139,7 +146,7 @@ func setupUSB() io.Reader {
 	ctxTimeout, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	toGoggles.WriteContext(ctxTimeout, MAGIC)
-	rs, err := fromGoggles.NewStream(fromGoggles.Desc.MaxPacketSize, 5 /* 5 read transactions may be in-flight at any time */)
+	rs, err := fromGoggles.NewStream(fromGoggles.Desc.MaxPacketSize * 4, flags.usb.bufferTxes)
 	if err != nil {
 		log.Fatalf("NewStream: %v", err)
 	}
@@ -192,6 +199,8 @@ func reader(in io.Reader, p rtp.Packetizer, w io.Writer) {
 	packetsWritten := 0
 	lastPacketReport := 0
 
+	lastPacketTimestamp := time.Now()
+
 	b := make([]byte, flags.usb.bufferSize)
 	for {
 		n, err := in.Read(b)
@@ -208,10 +217,24 @@ func reader(in io.Reader, p rtp.Packetizer, w io.Writer) {
 			nals := nz.Nalize(b[:n])
 			for _, nal := range nals {
 				// To update our timestamp, we need to understand how many samples a given RTP packet contains
-				// Our best guess, given that we don't have a display timestamp from the export, is to estimate this
-				// using the clock rate and the framerate, both of which are per second, then only using that if
-				// the NALU contained a frame.
-				var sampleCount uint32 = uint32(flags.rtp.clockRate/flags.rtp.frameRate) * uint32(nal.FrameCount)
+				// given that we don't have a display timestamp from the export, is to estimate this
+				// using one of two two methods, switched by a flag
+				// TODO: Which is actually better?
+				var sampleCount uint32 = 0
+				if flags.rtp.sampleMethodStatic {
+					// We know how long it's been since the last packet, so increment the timestamp that many samples
+					// ignoring the actual frame data
+					t := time.Now()
+					nsPerSecond := uint32(1 * 1000 * 1000 * 1000)
+					nsPerClock := uint32(nsPerSecond / uint32(flags.rtp.clockRate))
+					nsElapsed := uint32(t.Sub(lastPacketTimestamp).Nanoseconds())
+					sampleCount = nsElapsed/nsPerClock * uint32(nal.FrameCount)
+					lastPacketTimestamp = t
+				} else {
+					// Calculate our best guess, using the clock rate and the framerate,
+					// both of which are per second, then only using that if the NALU contained a frame.
+					sampleCount = uint32(flags.rtp.clockRate/flags.rtp.frameRate) * uint32(nal.FrameCount)
+				}
 				packets := p.Packetize(nal.Body, sampleCount)
 				for _, packet := range packets {
 					packetsWritten++
