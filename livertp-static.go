@@ -80,7 +80,7 @@ func main() {
 	// Spin off passing data around into a goroutine
 	go reader(rs, p, c)
 
-	fmt.Println("The following streams are available:")
+	fmt.Println("[sdp]: the following streams are available:")
 	printAllAddresses()
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", flags.http.port), nil))
 
@@ -183,7 +183,7 @@ func printAllAddresses() {
 				ip = v.IP
 			}
 			if !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
-				log.Printf("http://%s:%d/stream.sdp", ip.String(), flags.http.port)
+				fmt.Printf("\thttp://%s:%d/stream.sdp\n", ip.String(), flags.http.port)
 			}
 		}
 	}
