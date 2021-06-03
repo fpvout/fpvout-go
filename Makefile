@@ -12,7 +12,7 @@ LINUX_ARMV7=$(EXECUTABLE)_linux_armv7-$(VERSION)
 LINUX_MIPSEL=$(EXECUTABLE)_linux_mipsel-$(VERSION)
 WINDOWS_AMD64=$(EXECUTABLE)_windows_amd64-$(VERSION).exe
 
-all: clean linux
+all: clean linux windows
 .PHONY: all clean upload deps
 
 clean:
@@ -28,7 +28,7 @@ linux: $(LINUX_ARM64) $(LINUX_ARMV7) $(LINUX_AMD64) $(LINUX_MIPSEL)
 windows: $(WINDOWS_AMD64)
 
 $(LINUX_AMD64): $(INPUT_FILES)
-	GOOS=linux GOARCH=amd64 go build -o $@ $(LDFLAGS) $<
+	CC=x86_64-linux-gnu-gcc GOARCH=amd64 GOOS=linux go build -o $@ $(LDFLAGS) $<
 $(LINUX_ARM64): $(INPUT_FILES)
 	CC=aarch64-linux-gnu-gcc GOARCH=arm64 GOOS=linux CGO_ENABLED=1 go build -o $@ $(LDFLAGS) $<
 $(LINUX_ARMV7): $(INPUT_FILES)
