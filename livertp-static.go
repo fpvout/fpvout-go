@@ -7,6 +7,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"runtime"
 	"time"
 
 	"github.com/karalabe/gousb/usb"
@@ -23,24 +25,27 @@ type flagDef struct {
 		port int
 	}
 	rtp struct {
-		ip string
-		port int
-		mtu int
-		packetType int
-		clockRate uint
-		frameRate uint
+		ip                 string
+		port               int
+		mtu                int
+		packetType         int
+		clockRate          uint
+		frameRate          uint
 		sampleMethodStatic bool
 	}
 	usb struct {
-		vid int
-		pid int
+		vid        int
+		pid        int
 		bufferSize int
 		bufferTxes int
 	}
 }
 
 var flags flagDef
-
+var COMPILE_VERSION string
+var COMPILE_HOSTNAME string
+var COMPILE_TIMESTAMP string
+var COMPILE_USER string
 
 func init() {
 	// HTTP (for SDP)
@@ -65,6 +70,7 @@ func init() {
 }
 
 func main() {
+	fmt.Printf("[init]: %s version %s (%s) | built at %s by %s@%s\n\n", os.Args[0], COMPILE_VERSION, runtime.Version(), COMPILE_TIMESTAMP, COMPILE_USER, COMPILE_HOSTNAME)
 	// Build our important channels
 	c := setupUDP()
 	rs := setupUSB()
@@ -81,7 +87,7 @@ func main() {
 }
 
 func setupRTP() rtp.Packetizer {
-	return rtp.NewPacketizer(flags.rtp.mtu, uint8(flags.rtp.packetType), 0xDFDF1000 /* arbitrary source ID */,
+	return rtp.NewPacketizer(flags.rtp.mtu, uint8(flags.rtp.packetType), 0xDFDF1000, /* arbitrary source ID */
 		&codecs.H264Payloader{}, rtp.NewRandomSequencer(), uint32(flags.rtp.clockRate))
 
 }
@@ -220,7 +226,7 @@ func reader(in io.Reader, p rtp.Packetizer, w io.Writer) {
 					nsPerSecond := uint32(1 * 1000 * 1000 * 1000)
 					nsPerClock := uint32(nsPerSecond / uint32(flags.rtp.clockRate))
 					nsElapsed := uint32(t.Sub(lastPacketTimestamp).Nanoseconds())
-					sampleCount = nsElapsed/nsPerClock * uint32(nal.FrameCount)
+					sampleCount = nsElapsed / nsPerClock * uint32(nal.FrameCount)
 					lastPacketTimestamp = t
 				} else {
 					// Calculate our best guess, using the clock rate and the framerate,
