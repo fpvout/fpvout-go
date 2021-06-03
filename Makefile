@@ -1,16 +1,16 @@
 EXECUTABLE=bin/livertp
-VERSION=$(shell git describe --tags --always --long --dirty)
+VERSION=$(shell git rev-parse --abbrev-ref HEAD)-$(shell git describe --tags --always --long --dirty)
 HOSTNAME=$(shell hostname)
 TIMESTAMP=$(shell date)
 USER=$(shell id -u -n)
 LDFLAGS=-ldflags='-s -w -X main.COMPILE_VERSION=$(VERSION) -X main.COMPILE_HOSTNAME=$(HOSTNAME) -X "main.COMPILE_TIMESTAMP=$(TIMESTAMP)" -X "main.COMPILE_USER=$(USER)"'
 INPUT_FILES=livertp-static.go
 
-LINUX_AMD64=$(EXECUTABLE)_linux_amd64_$(VERSION)
-LINUX_ARM64=$(EXECUTABLE)_linux_arm64_$(VERSION)
-DARWIN_AMD64=$(EXECUTABLE)_darwin_amd64_$(VERSION)
-FREEBSD_AMD64=$(EXECUTABLE)_freebsd_amd64_$(VERSION)
-WINDOWS_AMD64=$(EXECUTABLE)_windows_amd64_$(VERSION).exe
+LINUX_AMD64=$(EXECUTABLE)_linux_amd64-$(VERSION)
+LINUX_ARM64=$(EXECUTABLE)_linux_arm64-$(VERSION)
+DARWIN_AMD64=$(EXECUTABLE)_darwin_amd64-$(VERSION)
+FREEBSD_AMD64=$(EXECUTABLE)_freebsd_amd64-$(VERSION)
+WINDOWS_AMD64=$(EXECUTABLE)_windows_amd64-$(VERSION).exe
 
 all: clean linux darwin freebsd windows
 .PHONY: all clean upload
