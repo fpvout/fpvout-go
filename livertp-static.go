@@ -115,16 +115,20 @@ func setupUSB() io.Reader {
 
 	var dev *usb.Device
 
+	if os.Geteuid() != 0 {
+		log.Println("[usb] you may need to run this program as root")
+	}
+
 	dev, err = ctx.OpenDeviceWithVidPid(flags.usb.vid, flags.usb.pid)
 	if err != nil {
-		log.Fatalf("Error opening device: %v", err)
+		log.Fatalf("[usb] error opening device: %v", err)
 	}
 	for dev == nil {
 		dev, err = ctx.OpenDeviceWithVidPid(flags.usb.vid, flags.usb.pid)
 		if err != nil {
-			log.Fatalf("Error opening device: %v", err)
+			log.Fatalf("[usb] error opening device: %v", err)
 		}
-		log.Printf("Waiting for device...")
+		log.Printf("[usb] waiting for device...")
 		time.Sleep(5 * time.Second)
 	}
 	// Detach kernel drivers
@@ -132,17 +136,17 @@ func setupUSB() io.Reader {
 	//defer dev.Close()
 	err = dev.SetConfig(1)
 	if err != nil {
-		log.Fatalf("Config(1): %v", err)
+		log.Fatalf("[usb] config(1): %v", err)
 	}
 	// Open endpoints
 	fromGoggles, err := dev.OpenEndpoint(1, 3, 0, 0x84)
 	if err != nil {
-		log.Fatalf("endpoint: %v", err)
+		log.Fatalf("[usb] endpoint: %v", err)
 	}
 
 	toGoggles, err := dev.OpenEndpoint(1, 3, 0, 0x03)
 	if err != nil {
-		log.Fatalf("endpoint: %v", err)
+		log.Fatalf("[usb] endpoint: %v", err)
 	}
 
 	// Write magic
@@ -158,8 +162,8 @@ func setupHTTP() {
 		w.Write([]byte("s=FPV Feed\n"))
 		w.Write([]byte(fmt.Sprintf("c=IN IP4 %s\n", flags.rtp.ip)))
 		w.Write([]byte("t=0 0\n"))
-		w.Write([]byte(fmt.Sprintf("m=video %d RTP/AVP 96\n", flags.rtp.port)))
-		w.Write([]byte(fmt.Sprintf("a=rtpmap:96 H264/%d\n", flags.rtp.clockRate)))
+		w.Write([]byte(fmt.Sprintf("m=video %d RTP/AVP %d\n", flags.rtp.port, flags.rtp.packetType)))
+		w.Write([]byte(fmt.Sprintf("a=rtpmap:%d H264/%d\n", flags.rtp.packetType, flags.rtp.clockRate)))
 	})
 }
 
@@ -167,12 +171,12 @@ func setupHTTP() {
 func printAllAddresses() {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		log.Fatalf("Error enumerating interfaces: %v", err)
+		log.Fatalf("[sdp] error enumerating interfaces: %v", err)
 	}
 	for _, i := range ifaces {
 		addrs, err := i.Addrs()
 		if err != nil {
-			log.Fatalf("Error enumerating addresses: %v", err)
+			log.Fatalf("[sdp] error enumerating addresses: %v", err)
 		}
 		for _, addr := range addrs {
 			var ip net.IP
@@ -238,14 +242,14 @@ func reader(in io.Reader, p rtp.Packetizer, w io.Writer) {
 					packetsWritten++
 					pBytes, err := packet.Marshal()
 					if err != nil {
-						log.Printf("packet: %v", err)
+						log.Printf("[reader] packet: %v", err)
 					}
 					w.Write(pBytes)
 				}
 			}
 			if packetsWritten > lastPacketReport+1000 {
 				lastPacketReport = packetsWritten
-				log.Printf("wrote %d packets", packetsWritten)
+				log.Printf("[reader] wrote %d packets", packetsWritten)
 			}
 		}
 	}
