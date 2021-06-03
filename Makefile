@@ -8,6 +8,7 @@ INPUT_FILES=livertp-static.go
 
 LINUX_AMD64=$(EXECUTABLE)_linux_amd64-$(VERSION)
 LINUX_ARM64=$(EXECUTABLE)_linux_arm64-$(VERSION)
+LINUX_ARMV7=$(EXECUTABLE)_linux_armv7-$(VERSION)
 LINUX_MIPSEL=$(EXECUTABLE)_linux_mipsel-$(VERSION)
 WINDOWS_AMD64=$(EXECUTABLE)_windows_amd64-$(VERSION).exe
 
@@ -23,13 +24,15 @@ deps:
 	go get github.com/karalabe/gousb/usb
 	sudo apt-get install -y gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64 gcc-mipsel-linux-gnu
 
-linux: $(LINUX_ARM64) $(LINUX_AMD64) $(LINUX_MIPSEL)
+linux: $(LINUX_ARM64) $(LINUX_ARMV7) $(LINUX_AMD64) $(LINUX_MIPSEL)
 windows: $(WINDOWS_AMD64)
 
 $(LINUX_AMD64): $(INPUT_FILES)
 	GOOS=linux GOARCH=amd64 go build -o $@ $(LDFLAGS) $<
 $(LINUX_ARM64): $(INPUT_FILES)
 	CC=aarch64-linux-gnu-gcc GOARCH=arm64 GOOS=linux CGO_ENABLED=1 go build -o $@ $(LDFLAGS) $<
+$(LINUX_ARMV7): $(INPUT_FILES)
+	CC=arm-linux-gnueabi-gcc GOARCH=arm GOARM=7 GOOS=linux CGO_ENABLED=1 go build -o $@ $(LDFLAGS) $<
 $(LINUX_MIPSEL): $(INPUT_FILES)
 	CC=mipsel-linux-gnu-gcc GOARCH=mipsle GOMIPS=softfloat GOOS=linux CGO_ENABLED=1 go build -o $@ $(LDFLAGS) $<
 $(WINDOWS_AMD64): $(INPUT_FILES)
