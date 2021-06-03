@@ -70,7 +70,7 @@ func init() {
 }
 
 func main() {
-	fmt.Printf("[init]: %s version %s (%s) | built at %s by %s@%s\n\n", os.Args[0], COMPILE_VERSION, runtime.Version(), COMPILE_TIMESTAMP, COMPILE_USER, COMPILE_HOSTNAME)
+	log.Printf("[init]: %s version %s (%s) | built at %s by %s@%s\n\n", os.Args[0], COMPILE_VERSION, runtime.Version(), COMPILE_TIMESTAMP, COMPILE_USER, COMPILE_HOSTNAME)
 	// Build our important channels
 	c := setupUDP()
 	rs := setupUSB()
@@ -80,7 +80,7 @@ func main() {
 	// Spin off passing data around into a goroutine
 	go reader(rs, p, c)
 
-	fmt.Println("[sdp]: the following streams are available:")
+	log.Println("[sdp]: the following streams are available:")
 	printAllAddresses()
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", flags.http.port), nil))
 
@@ -207,11 +207,11 @@ func reader(in io.Reader, p rtp.Packetizer, w io.Writer) {
 	for {
 		n, err := in.Read(b)
 		if err == io.EOF {
-			fmt.Println("EOF")
+			log.Println("EOF")
 			break
 		}
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			continue
 		}
 		if n > 0 {
