@@ -24,24 +24,23 @@ type flagDef struct {
 		port int
 	}
 	rtp struct {
-		ip string
-		port int
-		mtu int
-		packetType int
-		clockRate uint
-		frameRate uint
+		ip                 string
+		port               int
+		mtu                int
+		packetType         int
+		clockRate          uint
+		frameRate          uint
 		sampleMethodStatic bool
 	}
 	usb struct {
-		vid int
-		pid int
+		vid        int
+		pid        int
 		bufferSize int
 		bufferTxes int
 	}
 }
 
 var flags flagDef
-
 
 func init() {
 	// HTTP (for SDP)
@@ -82,7 +81,7 @@ func main() {
 }
 
 func setupRTP() rtp.Packetizer {
-	return rtp.NewPacketizer(flags.rtp.mtu, uint8(flags.rtp.packetType), 0xDFDF1000 /* arbitrary source ID */,
+	return rtp.NewPacketizer(flags.rtp.mtu, uint8(flags.rtp.packetType), 0xDFDF1000, /* arbitrary source ID */
 		&codecs.H264Payloader{}, rtp.NewRandomSequencer(), uint32(flags.rtp.clockRate))
 
 }
@@ -146,7 +145,7 @@ func setupUSB() io.Reader {
 	ctxTimeout, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	toGoggles.WriteContext(ctxTimeout, MAGIC)
-	rs, err := fromGoggles.NewStream(fromGoggles.Desc.MaxPacketSize * 4, flags.usb.bufferTxes)
+	rs, err := fromGoggles.NewStream(fromGoggles.Desc.MaxPacketSize*4, flags.usb.bufferTxes)
 	if err != nil {
 		log.Fatalf("NewStream: %v", err)
 	}
@@ -160,8 +159,8 @@ func setupHTTP() {
 		w.Write([]byte("s=FPV Feed\n"))
 		w.Write([]byte(fmt.Sprintf("c=IN IP4 %s\n", flags.rtp.ip)))
 		w.Write([]byte("t=0 0\n"))
-		w.Write([]byte(fmt.Sprintf("m=video %d RTP/AVP 96\n", flags.rtp.port)))
-		w.Write([]byte(fmt.Sprintf("a=rtpmap:96 H264/%d\n", flags.rtp.clockRate)))
+		w.Write([]byte(fmt.Sprintf("m=video %d RTP/AVP %d\n", flags.rtp.port, flags.rtp.packetType)))
+		w.Write([]byte(fmt.Sprintf("a=rtpmap:%d H264/%d\n", flags.rtp.packetType, flags.rtp.clockRate)))
 	})
 }
 
@@ -228,7 +227,7 @@ func reader(in io.Reader, p rtp.Packetizer, w io.Writer) {
 					nsPerSecond := uint32(1 * 1000 * 1000 * 1000)
 					nsPerClock := uint32(nsPerSecond / uint32(flags.rtp.clockRate))
 					nsElapsed := uint32(t.Sub(lastPacketTimestamp).Nanoseconds())
-					sampleCount = nsElapsed/nsPerClock * uint32(nal.FrameCount)
+					sampleCount = nsElapsed / nsPerClock * uint32(nal.FrameCount)
 					lastPacketTimestamp = t
 				} else {
 					// Calculate our best guess, using the clock rate and the framerate,
