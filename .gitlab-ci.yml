@@ -1,0 +1,35 @@
+stages: 
+  - build
+
+image: golang:1.16
+
+build-linux:
+  stage: build
+  script: make ci linux
+  artifacts:
+    paths:
+      - bin/*
+build-windows:
+  stage: build
+  script: make ci windows
+  artifacts:
+    paths:
+      - bin/*
+build-freebsd:
+  stage: build
+  script: make ci freebsd
+  artifacts:
+    paths:
+      - bin/*
+build-openbsd:
+  stage: build
+  script: make ci openbsd
+  artifacts:
+    paths:
+      - bin/*
+build-darwin:
+  stage: build
+  script: make ci darwin
+  artifacts:
+    paths:
+      - bin/*

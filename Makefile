@@ -21,8 +21,9 @@ upload:
 	mc cp bin/* minio/private/go-fpv/$(VERSION)/
 	mc share download --expire=72h minio/private/go-fpv/$(VERSION)/
 deps:
-	go get github.com/karalabe/gousb/usb
+	go get ./...
 	sudo apt-get install -y gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64 gcc-mipsel-linux-gnu
+ci: clean deps
 
 linux: $(LINUX_ARM64) $(LINUX_ARMV7) $(LINUX_AMD64) $(LINUX_MIPSEL)
 windows: $(WINDOWS_AMD64)
