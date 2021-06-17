@@ -22,7 +22,7 @@ upload:
 	mc share download --expire=72h minio/private/go-fpv/$(VERSION)/
 deps:
 	go get ./...
-	sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64 gcc-mipsel-linux-gnu
+	sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64 gcc-mipsel-linux-gnu gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi
 ci: clean deps
 
 linux: $(LINUX_ARM64) $(LINUX_ARMV7) $(LINUX_AMD64) $(LINUX_MIPSEL)
