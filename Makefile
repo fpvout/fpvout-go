@@ -27,7 +27,7 @@ deps:
 	sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64 gcc-mipsel-linux-gnu gcc-arm-linux-gnueabihf gcc-arm-linux-gnueabi
 ci: clean deps
 
-linux: $(LINUX_ARM64) $(LINUX_ARMV7) $(LINUX_ARMV6 )$(LINUX_ARMV5) $(LINUX_AMD64) $(LINUX_MIPSEL)
+linux: $(LINUX_ARM64) $(LINUX_ARMV7) $(LINUX_ARMV6) $(LINUX_ARMV5) $(LINUX_AMD64) $(LINUX_MIPSEL)
 windows: $(WINDOWS_AMD64)
 
 $(LINUX_AMD64): $(INPUT_FILES)
