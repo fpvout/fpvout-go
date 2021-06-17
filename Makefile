@@ -13,7 +13,7 @@ LINUX_MIPSEL=$(EXECUTABLE)_linux_mipsel-$(VERSION)
 WINDOWS_AMD64=$(EXECUTABLE)_windows_amd64-$(VERSION).exe
 
 all: clean linux windows
-.PHONY: all clean upload deps
+.PHONY: all clean upload deps ci
 
 clean:
 	rm bin/* 2>/dev/null; true
